@@ -26,4 +26,9 @@
   <ItemGroup>
     <Media Include="RoundPen.mp4" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="cvui.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
 </Project>
