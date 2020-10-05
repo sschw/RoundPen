@@ -18,6 +18,12 @@
     <ClCompile Include="RoundPen.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="inpainting.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Marker.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="opencv_world440d.dll" />
@@ -27,7 +33,7 @@
     <Media Include="RoundPen.mp4" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="cvui.h">
+    <ClInclude Include="Marker.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
