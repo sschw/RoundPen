@@ -3,7 +3,10 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/videoio.hpp>
 #include <iostream>
+#include <fstream>
 #include <stdio.h>
+
+#include "Marker.h"
 
 using namespace std;
 using namespace cv;
@@ -86,41 +89,32 @@ void cut_roundPen(Mat& input_hsv, Mat& output_hsv, Mat& mask, Mat& downscaled, v
 
 int main(int argn, char** argv)
 {
-	String path;
-	if (argn == 1) {
-		// Use default test video with 1 frame.
-		path = "./RoundPen.mp4";
-	}
-	else {
-		// Read filename from cmd.
-		path = argv[1];
-	}
-	
-	uint8_t colorBuffer[124];
-	int colorBufferValues = argn - 2;
-	if (colorBufferValues <= 0) {
-		// Use some default test values.
-		colorBufferValues = 10;
-		// Colors from https://ae01.alicdn.com/kf/H01c3b911feb44d2381d8f5dafd851cce9/50-25-10-pc-1Pack-Farbige-Ping-Pong-B-lle-40mm-2-4g-Unterhaltung-Tischtennis-B.jpg
-		colorBuffer[0] = 153;
-		colorBuffer[1] = 178;
-		colorBuffer[2] = 20;
-		colorBuffer[3] = 103;
-		colorBuffer[4] = 82;
-		colorBuffer[5] = 116;
-		colorBuffer[6] = 27;
-		colorBuffer[7] = 99;
-		colorBuffer[8] = 156;
-		colorBuffer[9] = 72;
-	}
-	else {
-		// Read integers from cmd.
-
-		// NOTE: H Value in OpenCV is [0-179]
-		for (int i = 0; i < colorBufferValues; i++) {
-			colorBuffer[i] = atoi(argv[i + 2]);
+	String path = "./RoundPen.mp4";
+	String markersFile = "./markers.csv";
+	for (int i = 2; i < argn; i += 2) {
+		if (argv[i-1] == "--video") {
+			path = argv[i];
+		}
+		else if (argv[i-1] == "--markers") {
+			markersFile = argv[i];
 		}
 	}
+
+	ifstream reader;
+	reader.open(markersFile);
+	if (!reader.is_open()) return 1;
+
+	char markerName[40];
+	char h[3], s[3], v[3];
+
+	vector<rp::Marker> markers;
+	while (reader.getline(markerName, 40, ';')) {
+		reader.getline(h, 40, ';');
+		reader.getline(s, 40, ';');
+		reader.getline(v, 40);
+		markers.push_back(rp::Marker(cv::String(markerName), cv::Vec3b(atoi(h), atoi(s), atoi(v))));
+	}
+	reader.close();
 
 	VideoCapture cap;
 	Mat frame;
@@ -128,6 +122,7 @@ int main(int argn, char** argv)
 	Mat downscaled;
 	Mat frame_only_roundpen;
 	Mat frame_thresh;
+	Mat frame_marker_area;
 	vector<vector<Point>> contours;
 	vector<Vec4i> hierarchy;
 	vector<vector<Point>> hull(1);
@@ -139,23 +134,69 @@ int main(int argn, char** argv)
 		return -1;
 	}
 
+	bool init = true;
+	uint8_t frameNr = 0;
+
 	while (cap.read(frame)) {
-		
 		imshow("img", frame);
 		cvtColor(frame, frame, COLOR_BGR2HSV);
 		// Find RoundPen
 		cut_roundPen(frame, frame_only_roundpen, mask, downscaled, contours, hull, hierarchy);
-		
+
 		imshow("img_cut", frame_only_roundpen);
 
-		for (int i = 0; i < colorBufferValues; i++) {
-			uint8_t lowerH = colorBuffer[i] - 1;
-			uint8_t higherH = colorBuffer[i] + 1;
-			if (lowerH > 179) lowerH -= 256 - 180;
-			if (higherH > 179) lowerH -= 180;
-			inRange(frame_only_roundpen, Scalar(lowerH, 90, 15), Scalar(higherH, 255, 240), frame_thresh);
-			imshow("Current frame color threshold " + to_string(i), frame_thresh);
+		if (init) {
+			for (auto marker : markers) {
+				marker.calibrate_marker_range(frame_only_roundpen);
+			}
+			init = false;
 		}
+		for (auto marker : markers) {
+			int xLow = 0, yLow = 0;
+			if (marker.is_trackable()) {
+				auto nextPos = marker.get_next_position(frameNr);
+				xLow = nextPos.x - 40, yLow = nextPos.y - 40;
+				frame_marker_area = frame_only_roundpen(Rect(xLow, yLow, 80, 80));
+			}
+			else {
+				frame_marker_area = frame_only_roundpen;
+			}
+			inRange(frame_marker_area, marker.get_marker_color_range_low(), marker.get_marker_color_range_high(), frame_thresh);
+			findContours(frame_thresh, contours, hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0, 0));
+
+			Moments m;
+			double centerX, centerY;
+			if (contours.size == 0) {
+				marker.calibrate_marker_range(frame_only_roundpen);
+			} else if(contours.size > 1 && xLow != 0 && yLow != 0) {
+				int area;
+				double contourX, contourY;
+				double contourError;
+				double error = INFINITY;
+				for (int i = 0; i < contours.size; i++) {
+					area = contourArea(contours[i]);
+					if (area < 50) {
+						m = moments(contours[i]);
+						contourX = m.m10 / m.m00;
+						contourY = m.m01 / m.m00;
+						contourError = pow(contourX - (xLow + 40), 2) + pow(contourY - (yLow + 40), 2);
+						if (contourError < error) {
+							error = contourError;
+							centerX = contourX;
+							centerY = contourY;
+						}
+					}
+				}
+				marker.set_current_position(frameNr, &Point2d(centerX, centerY));
+			}
+			else if (contours.size == 1) {
+				m = moments(contours[0]);
+				centerX = m.m10 / m.m00;
+				centerY = m.m01 / m.m00;
+				marker.set_current_position(frameNr, &Point2d(centerX, centerY));
+			}
+		}
+		frameNr++;
 	}
 	waitKey(0);
 	return 0;

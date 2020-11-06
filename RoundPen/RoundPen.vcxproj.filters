@@ -18,10 +18,13 @@
     <ClCompile Include="RoundPen.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="inpainting.cpp">
+    <ClCompile Include="Marker.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Marker.cpp">
+    <ClCompile Include="MarkerEdge.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Background.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -34,6 +37,12 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Marker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MarkerEdge.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Background.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
