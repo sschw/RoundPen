@@ -37,7 +37,7 @@ namespace rp {
 		void set_current_position(uint8_t currentFrame, cv::Point2d* pos);
 		cv::String get_name() { return mName; }
 
-		void find_position(cv::Mat& frame, uint8_t currentFrame);
+		int find_position(cv::Mat& frame, uint8_t currentFrame, cv::Point2d* position);
 
 	private:
 		cv::String mName;

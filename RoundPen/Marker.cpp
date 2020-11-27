@@ -126,18 +126,23 @@ namespace rp {
 		}
 	}
 
-	void Marker::find_position(cv::Mat& frame, uint8_t currentFrame) {
+	// Returns -1 if not found, 0 if found, 1 if previously tracked position still valid.
+	int Marker::find_position(cv::Mat& frame, uint8_t currentFrame, cv::Point2d* position) {
 		cv::Mat marker_area;
 		cv::Mat marker_area_thresh;
+		std::vector<std::vector<cv::Point>> cont;
+		cv::Moments mu;
+		int returnVal = -1;
 
+		int lx = 0, ly = 0;
 		// Decrease search area.
 		cv::Point2d predicted_center;
 		if (is_trackable(currentFrame)) {
 			predicted_center = get_next_position(currentFrame);
 			int halfW = (int)std::min(200.0, std::max(20.0, abs(predicted_center.x - mLastPosition.x)));
 			int halfH = (int)std::min(200.0, std::max(20.0, abs(predicted_center.y - mLastPosition.y)));
-			int lx = (int)(std::max(0.0, std::min(predicted_center.x, (double)frame.cols) - halfW));
-			int ly = (int)(std::max(0.0, std::min(predicted_center.y, (double)frame.rows) - halfH));
+			lx = (int)(std::max(0.0, std::min(predicted_center.x, (double)frame.cols) - halfW));
+			ly = (int)(std::max(0.0, std::min(predicted_center.y, (double)frame.rows) - halfH));
 			int hx = (int)(std::min((double)frame.cols-1, std::max(0.0, predicted_center.x) + halfW));
 			int hy = (int)(std::min((double)frame.rows-1, std::max(0.0, predicted_center.y) + halfH));
 			
@@ -148,6 +153,72 @@ namespace rp {
 		}
 
 		inRange(marker_area, get_marker_color_range_low(), get_marker_color_range_high(), marker_area_thresh);
+
+		static cv::Mat element = cv::getStructuringElement(cv::MORPH_ELLIPSE,
+			cv::Size(2 * 2 + 1, 2 * 2 + 1),
+			cv::Point(2, 2));
+		cv::dilate(marker_area_thresh, marker_area_thresh, element);
+		// Find the contour, using offset lx, ly to scale points back to real position.
+		cv::findContours(marker_area_thresh, cont, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE, cv::Point(lx, ly));
+
+		if (cont.size() == 0) {
+			// Increase the color range so we hopefully will be able to track it again.
+			if (mCHigh[0] - mCLow[0] < (START_H_RANGE << 1)) {
+				mCLow[0] = FIX_SUBR_H_RANGE(mCLow[0] - 1);
+				mCHigh[0] = FIX_ADD_H_RANGE(mCHigh[0] + 1);
+			}
+			if (mCHigh[1] - mCLow[1] < (START_S_RANGE << 1)) {
+				mCLow[1] = FIX_SUBR_SV_RANGE(mCLow[1], 1);
+				mCHigh[1] = FIX_ADD_SV_RANGE(mCHigh[1], 1);
+			}
+			if (mCHigh[2] - mCLow[2] < (START_V_RANGE << 1)) {
+				mCLow[2] = FIX_SUBR_SV_RANGE(mCLow[2], 1);
+				mCHigh[2] = FIX_ADD_SV_RANGE(mCHigh[2], 1);
+			}
+			if (predicted_center != cv::Point2d()) {
+				position->x = predicted_center.x;
+				position->y = predicted_center.y;
+				returnVal = 1;
+			}
+		}
+		else if (cont.size() >= 1) {
+			int area;
+			double contourX, contourY;
+			double contourError;
+			double error = INFINITY;
+			cv::Mat labels = cv::Mat::zeros(marker_area.size(), CV_8UC1);
+
+			for (int i = 0; i < cont.size(); i++) {
+				area = contourArea(cont[i]);
+				if (area < 200) {
+					mu = moments(cont[i]);
+					contourX = std::max(0.0, std::min(mu.m10 / (mu.m00 + 1e-5), (double)frame.cols));
+					contourY = std::max(0.0, std::min(mu.m01 / (mu.m00 + 1e-5), (double)frame.rows));
+
+					// Minimize error if we already know it. Otherwise take the one with the smallest color error.
+					if (predicted_center != cv::Point2d()) {
+						contourError = pow(contourX - predicted_center.x, 2) + pow(contourY - predicted_center.y, 2);
+					}
+					else {
+						cv::drawContours(labels, cont, i, cv::Scalar(i), cv::FILLED);
+						cv::Rect roi = cv::boundingRect(cont[i]);
+						cv::Scalar mean = cv::mean(marker_area(roi), labels(roi) == i);
+						
+						contourError = pow(mean[0] - mHsvColor[0], 2) + pow(mean[1] - mHsvColor[1], 2) + pow(mean[2] - mHsvColor[2], 2);
+					}
+					if (contourError < error) {
+						error = contourError;
+						position->x = contourX;
+						position->y = contourY;
+						returnVal = 0;
+					}
+				}
+			}
+			//if (prevCenter != nullptr) {
+			//    drawMarker(frame_points, (*prevCenter) / (((double)frame.cols) / 800), cv::Scalar(0, 0, 128), cv::MARKER_TILTED_CROSS, 5, 2);
+			//}
+			return returnVal;
+		}
 	}
 	
 	cv::Scalar ScalarHSV2BGR(uchar H, uchar S, uchar V) {

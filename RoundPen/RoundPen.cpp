@@ -63,10 +63,10 @@ void cut_roundPen(Mat& input_hsv, Mat& output_hsv, Mat& mask, Mat& downscaled, v
 		convexHull(contours[contourID], hull[0]);
 		//drawContours(mask, hull, 0, Scalar(255), -1);
 		fillConvexPoly(mask, Mat(hull[0]) * (((double)input_hsv.cols) / 100), Scalar(255));
-		static Mat element = getStructuringElement(MORPH_ELLIPSE,
+		/*static Mat element = getStructuringElement(MORPH_ELLIPSE,
 			Size(2 * 6 + 1, 2 * 6 + 1),
 			Point(6, 6));
-		erode(mask, mask, element);
+		erode(mask, mask, element);*/
 		if(show_imgs)
 			imshow("roundpen mask", mask);
 	}
@@ -165,6 +165,8 @@ int main(int argn, char** argv)
 		imshow("Cut", downscaled);
 		
 		if (init) {
+			// Calibrate optimal marker color filter ranges.
+			// This will take much time.
 #pragma omp parallel for
 			for (int i = 0; i < markers.size(); i++) {
 				markers[i].calibrate_marker_range(frame_only_roundpen);
@@ -175,66 +177,10 @@ int main(int argn, char** argv)
 		//GaussianBlur(frame_only_roundpen, frame_only_roundpen, Size(5, 5), 0);
 #pragma omp parallel for
 		for (int i = 0; i < markers.size(); i++) {
-			Mat frame_marker_area;
-			Mat frame_thresh;
-
-			Moments mu;
-			Point2d* prevCenter;
-			Point2d pCenterCache;
-			vector<vector<Point>> cont;
-
-			int xLow = 0, yLow = 0;
-			prevCenter = nullptr;
-			if (markers[i].is_trackable(frameNr)) {
-				pCenterCache = markers[i].get_next_position(frameNr);
-				auto prevKnownPos = markers[i].get_last_position();
-
-				auto dist = prevKnownPos - pCenterCache;
-
-				prevCenter = &pCenterCache;
-				xLow = max(0.0, min(pCenterCache.x, (double)frame_only_roundpen.cols) - 40), yLow = max(0.0, min(pCenterCache.y, (double)frame_only_roundpen.rows) - 40);
-				auto maxX = min(frame_only_roundpen.cols - xLow - 1, 80);
-				auto maxY = min(frame_only_roundpen.rows - yLow - 1, 80);
-
-				frame_marker_area = frame_only_roundpen(Rect(xLow, yLow, maxX, maxY));
-			}
-			else {
-				frame_marker_area = frame_only_roundpen;
-			}
-			inRange(frame_marker_area, markers[i].get_marker_color_range_low(), markers[i].get_marker_color_range_high(), frame_thresh);
-			Mat element = getStructuringElement(MORPH_ELLIPSE,
-				Size(2 * 2 + 1, 2 * 2 + 1),
-				Point(2, 2));
-			dilate(frame_thresh, frame_thresh, element);
-			findContours(frame_thresh, cont, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0, 0));
-
-			if (cont.size() == 0) {
-				//markers[i].calibrate_marker_range(frame_only_roundpen);
-			}
-			else if (cont.size() >= 1) {
-				int area;
-				double contourX, contourY;
-				double contourError;
-				double error = INFINITY;
-				for (int i = 0; i < cont.size(); i++) {
-					area = contourArea(cont[i]);
-					if (area < 200) {
-						mu = moments(cont[i]);
-						contourX = max(0.0, min(mu.m10 / (mu.m00 + 1e-5) + xLow, (double)frame_only_roundpen.cols));
-						contourY = max(0.0, min(mu.m01 / (mu.m00 + 1e-5) + yLow, (double)frame_only_roundpen.rows));
-						contourError = pow(contourX - (xLow + 40), 2) + pow(contourY - (yLow + 40), 2);
-						if (prevCenter == nullptr || contourError < error) {
-							error = contourError;
-							prevCenter = &pCenterCache;
-							prevCenter->x = contourX;
-							prevCenter->y = contourY;
-						}
-					}
-				}
-				if (prevCenter != nullptr) {
-					//drawMarker(frame_points, (*prevCenter) / (((double)frame.cols) / 800), cv::Scalar(0, 0, 128), cv::MARKER_TILTED_CROSS, 5, 2);
-				}
-				markers[i].set_current_position(frameNr, prevCenter);
+			Point2d pos;
+			int validity = markers[i].find_position(frame_only_roundpen, frameNr, &pos);
+			if (validity == 0) {
+				markers[i].set_current_position(frameNr, &pos);
 			}
 		}
 
