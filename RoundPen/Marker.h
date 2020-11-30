@@ -19,13 +19,13 @@ namespace rp {
 
 	class Marker {
 	public:
-		Marker(cv::String name, cv::Vec3b hsvColor, bool alwaysVisible = false, uint8_t framesUntilLost = 10): mName(name), mHsvColor(hsvColor), mAlwaysVisible(alwaysVisible), mFramesUntilLost(framesUntilLost), mLastFrame(255), mTracked(false) {
+		Marker(cv::String name, cv::Vec3b hsvColor, bool alwaysVisible = false, uint8_t framesUntilLost = 5): mName(name), mHsvColor(hsvColor), mAlwaysVisible(alwaysVisible), mFramesUntilLost(framesUntilLost), mLastFrame(255), mTracked(false) {
 			// Define minimal and maximal range.
 			mCLow = cv::Vec3b(FIX_SUBR_H_RANGE(mHsvColor[0] - 5), FIX_SUBR_SV_RANGE(mHsvColor[1], 40), FIX_SUBR_SV_RANGE(mHsvColor[2], 40));
 			mCHigh = cv::Vec3b(FIX_ADD_H_RANGE(mHsvColor[0] + 5), FIX_ADD_SV_RANGE(mHsvColor[1], 40), FIX_ADD_SV_RANGE(mHsvColor[2], 40));
 		}
 
-		void calibrate_marker_range(cv::Mat& img);
+		void calibrate_marker_range(cv::Mat& img, uint8_t frameNr);
 		void append_neighbor(MarkerEdge* edge);
 		cv::Vec3b get_marker_color();
 		cv::Vec3b get_marker_color_range_low();

@@ -35,7 +35,8 @@ void cut_roundPen(Mat& input_hsv, Mat& output_hsv, Mat& mask, Mat& downscaled, v
 	//float roundPenRadius;
 
 	//GaussianBlur(frame, frame_gaussian, Size(45, 45), 0);
-	inRange(downscaled, Scalar(5, 0, 0), Scalar(30, 40, 255), downscaled);
+	inRange(downscaled, Scalar(0, 10, 0), Scalar(180, 255, 255), downscaled);
+	downscaled = 1 - downscaled;
 
 	findContours(downscaled, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0, 0));
 
@@ -70,6 +71,7 @@ void cut_roundPen(Mat& input_hsv, Mat& output_hsv, Mat& mask, Mat& downscaled, v
 		if(show_imgs)
 			imshow("roundpen mask", mask);
 	}
+	output_hsv = Mat();
 	input_hsv.copyTo(output_hsv, mask);
 }
 
@@ -98,24 +100,26 @@ int main(int argn, char** argv)
 	ifstream reader;
 	reader.open(markersFile);
 	if (!reader.is_open()) return 1;
-
-	char nameBuffer[40];
-	char h[3], s[3], v[3];
 	cv::Vec3b background;
-
 	vector<rp::Marker> markers;
-	while (reader.getline(nameBuffer, 40, ';')) {
-		reader.getline(h, 40, ';');
-		reader.getline(s, 40, ';');
-		reader.getline(v, 40);
-		if (strcmp(nameBuffer, "Background") == 0) {
-			background = cv::Vec3b(atoi(h), atoi(s), atoi(v));
+
+	{
+		char nameBuffer[40];
+		char h[4], s[4], v[4];
+
+		while (reader.getline(nameBuffer, 40, ';')) {
+			reader.getline(h, 4, ';');
+			reader.getline(s, 4, ';');
+			reader.getline(v, 4);
+			if (strcmp(nameBuffer, "Background") == 0) {
+				background = cv::Vec3b(atoi(h), atoi(s), atoi(v));
+			}
+			else {
+				markers.push_back(rp::Marker(cv::String(nameBuffer), cv::Vec3b(atoi(h), atoi(s), atoi(v))));
+			}
 		}
-		else {
-			markers.push_back(rp::Marker(cv::String(nameBuffer), cv::Vec3b(atoi(h), atoi(s), atoi(v))));
-		}
+		reader.close();
 	}
-	reader.close();
 
 	VideoCapture cap;
 	Mat frame;
@@ -143,7 +147,8 @@ int main(int argn, char** argv)
 			ratio = ((double) frame.rows) / frame.cols;
 			resizeWindow("Image", 800, (int) (800 * ratio));
 		}
-		imshow("Image", frame);
+		resize(frame, frame_points, Size(800, (int)(800 * ratio)));
+		imshow("Image", frame_points);
 		if(waitKey(20) == ' ') break;
 	}
 	namedWindow("Cut", WINDOW_NORMAL);
@@ -169,18 +174,23 @@ int main(int argn, char** argv)
 			// This will take much time.
 #pragma omp parallel for
 			for (int i = 0; i < markers.size(); i++) {
-				markers[i].calibrate_marker_range(frame_only_roundpen);
+				markers[i].calibrate_marker_range(frame_only_roundpen, frameNr);
 			}
 			init = false;
 		}
-		
-		//GaussianBlur(frame_only_roundpen, frame_only_roundpen, Size(5, 5), 0);
+		else {
+
+			//GaussianBlur(frame_only_roundpen, frame_only_roundpen, Size(5, 5), 0);
 #pragma omp parallel for
-		for (int i = 0; i < markers.size(); i++) {
-			Point2d pos;
-			int validity = markers[i].find_position(frame_only_roundpen, frameNr, &pos);
-			if (validity == 0) {
-				markers[i].set_current_position(frameNr, &pos);
+			for (int i = 0; i < markers.size(); i++) {
+				Point2d pos;
+				int validity = markers[i].find_position(frame_only_roundpen, frameNr, &pos);
+				if (validity == 0) {
+					markers[i].set_current_position(frameNr, &pos);
+				}
+				else {
+					markers[i].calibrate_marker_range(frame_only_roundpen, frameNr);
+				}
 			}
 		}
 
@@ -191,7 +201,7 @@ int main(int argn, char** argv)
 			if (markers[i].is_trackable(frameNr)) {
 				auto pos = markers[i].get_next_position(frameNr);
 				markerText << ": " << (int) pos.x << ", " << (int) pos.y;
-				drawMarker(frame_points, pos / (((double)frame.cols) / 800), cv::Scalar(0, 0, 128), cv::MARKER_TILTED_CROSS, 5, 2);
+				drawMarker(frame_points, pos / (((double)frame.cols) / 800), cv::Scalar(0, 0, 128 + ((markers[i].is_tracked_for_frame(frameNr)) ? 127 : 0)), cv::MARKER_TILTED_CROSS, 5, 2);
 			}
 			putText(frame_points, markerText.str(), cv::Point(10, i * 10 + 10), FONT_HERSHEY_PLAIN, 0.5, rp::ScalarHSV2BGR(data[0], data[1], data[2]), 1);
 		}
@@ -200,6 +210,10 @@ int main(int argn, char** argv)
 		frameNr++;
 		waitKey(1);
 	}
+	destroyWindow("Input");
+	destroyWindow("Cut");
+	putText(frame_points, "Tracking done.", Point(frame_points.cols / 2 - 100, frame_points.rows / 2), FONT_HERSHEY_PLAIN, 2, Scalar(0, 0, 255), 2);
+	imshow("Image", frame_points);
 	waitKey(0);
 	return 0;
 }
