@@ -178,14 +178,12 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <Media Include="RoundPen.mp4">
-      <DeploymentContent>true</DeploymentContent>
-    </Media>
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="Background.h" />
     <ClInclude Include="Marker.h" />
     <ClInclude Include="MarkerEdge.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Media Include="RoundPen.MOV" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

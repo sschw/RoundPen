@@ -34,9 +34,6 @@
     <None Include="markers.csv" />
   </ItemGroup>
   <ItemGroup>
-    <Media Include="RoundPen.mp4" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="Marker.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -46,5 +43,8 @@
     <ClInclude Include="Background.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Media Include="RoundPen.MOV" />
   </ItemGroup>
 </Project>
