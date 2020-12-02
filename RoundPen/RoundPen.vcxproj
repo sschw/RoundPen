@@ -113,6 +113,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <OpenMPSupport>true</OpenMPSupport>
+      <AdditionalOptions>/Zc:twoPhase- %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -151,6 +152,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <OpenMPSupport>true</OpenMPSupport>
+      <AdditionalOptions>/Zc:twoPhase- %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -161,7 +163,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Background.cpp" />
     <ClCompile Include="Marker.cpp" />
     <ClCompile Include="MarkerEdge.cpp" />
     <ClCompile Include="RoundPen.cpp" />
@@ -178,7 +179,6 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Background.h" />
     <ClInclude Include="Marker.h" />
     <ClInclude Include="MarkerEdge.h" />
   </ItemGroup>

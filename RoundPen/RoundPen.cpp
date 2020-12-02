@@ -2,6 +2,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/videoio.hpp>
+#include <opencv2/photo.hpp>
 #include <iostream>
 #include <fstream>
 #include <stdio.h>
@@ -35,8 +36,7 @@ void cut_roundPen(Mat& input_hsv, Mat& output_hsv, Mat& mask, Mat& downscaled, v
 	//float roundPenRadius;
 
 	//GaussianBlur(frame, frame_gaussian, Size(45, 45), 0);
-	inRange(downscaled, Scalar(0, 10, 0), Scalar(180, 255, 255), downscaled);
-	downscaled = 1 - downscaled;
+	inRange(downscaled, Scalar(0, 0, 0), Scalar(180, 10, 255), downscaled);
 
 	findContours(downscaled, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0, 0));
 
@@ -75,12 +75,23 @@ void cut_roundPen(Mat& input_hsv, Mat& output_hsv, Mat& mask, Mat& downscaled, v
 	input_hsv.copyTo(output_hsv, mask);
 }
 
-int find_center_of_marker(rp::Marker& marker, int frameNr, Mat& frame, Mat& frame_thresh) {
-	bool using_previous_pos = marker.is_trackable(frameNr);
+int marker_removing(Mat& img, Mat& out, vector<rp::Marker>& markers, int frameNr) {
+	Mat mask = Mat::zeros(img.rows, img.cols, CV_8U);
 
-	if (using_previous_pos) {
-
+	for (auto& marker : markers) {
+		if (marker.is_trackable(frameNr)) {
+			if (marker.is_tracked_for_frame(frameNr)) {
+				circle(mask, marker.get_last_position(), 13, Scalar(255), FILLED);
+			}
+			else {
+				auto pos = marker.get_next_position(frameNr);
+				auto diff = pos - marker.get_last_position();
+				circle(mask, pos, max(13, (int)sqrt(pow(diff.x, 2) + pow(diff.y, 2))), Scalar(255), FILLED);
+			}
+		}
 	}
+
+	inpaint(img, mask, out, 12, INPAINT_TELEA);
 	return 0;
 }
 
@@ -123,6 +134,7 @@ int main(int argn, char** argv)
 
 	VideoCapture cap;
 	Mat frame;
+	Mat frame_hsv;
 	Mat mask;
 	Mat frame_points;
 	Mat downscaled;
@@ -153,18 +165,31 @@ int main(int argn, char** argv)
 	}
 	namedWindow("Cut", WINDOW_NORMAL);
 	namedWindow("Input", WINDOW_NORMAL);
+	namedWindow("Output", WINDOW_NORMAL);
 	resizeWindow("Cut", 400, (int)(400 * ratio));
-	resizeWindow("Input", 400, (int)(400 * ratio));
+	resizeWindow("Input", 800, (int)(800 * ratio));
+	resizeWindow("Output", 800, (int)(800 * ratio));
 
+	VideoWriter outWriter("output_video.avi", VideoWriter::fourcc('W', 'M', 'V', '2'), 30, frame.size());
+	ofstream outMarker;
+	outMarker.open("output_markers.csv");
+
+	for (int i = 0; i < markers.size(); i++) {
+		outMarker << markers[i].get_name() << ";";
+	}
+	outMarker << endl;
+#pragma omp parallel
+#pragma omp master
 	while (cap.read(frame)) {
 		//frame.copyTo(frame_points);
 		resize(frame, frame_points, Size(800, (int)(800 * ratio)));
-		cvtColor(frame, frame, COLOR_BGR2HSV);
-		// Find RoundPen
-		resize(frame, downscaled, Size(100, (int)(100 * ratio)));
+		imshow("Input", frame_points);
 
-		imshow("Input", downscaled);
-		cut_roundPen(frame, frame_only_roundpen, mask, downscaled, contours, hull);
+		cvtColor(frame, frame_hsv, COLOR_BGR2HSV);
+		// Find RoundPen
+		resize(frame_hsv, downscaled, Size(100, (int)(100 * ratio)));
+
+		cut_roundPen(frame_hsv, frame_only_roundpen, mask, downscaled, contours, hull);
 
 		resize(frame_only_roundpen, downscaled, Size(100, (int)(100 * ratio)));
 		imshow("Cut", downscaled);
@@ -208,10 +233,43 @@ int main(int argn, char** argv)
 
 		imshow("Image", frame_points);
 		frameNr++;
-		waitKey(1);
+
+		// Copy to a dedicated memory to put it into a new task.
+		/*Mat frame_output;
+		vector<rp::Marker> frame_output_markers;
+
+		frame.copyTo(frame_output);
+		for (int i = 0; i < markers.size(); i++) {
+			frame_output_markers.push_back(markers[i]);
+		}*/
+//#pragma omp task untied
+		{
+				marker_removing(frame, frame, markers, frameNr);
+
+				resize(frame, frame_points, Size(800, (int)(800 * ratio)));
+				imshow("Output", frame_points);
+
+				outWriter.write(frame);
+				for (int i = 0; i < markers.size(); i++) {
+					if (markers[i].is_trackable(frameNr)) {
+						if (markers[i].is_tracked_for_frame(frameNr)) {
+						}
+						else {
+							auto pos = markers[i].get_next_position(frameNr);
+							outMarker << pos.x << ", " << pos.y << "*";
+						}
+					}
+					outMarker << ";";
+				}
+				outMarker << endl;
+		}
+		if(waitKey(1) == 27) break;
 	}
+	outWriter.release();
+	outMarker.close();
 	destroyWindow("Input");
 	destroyWindow("Cut");
+	destroyWindow("Output");
 	putText(frame_points, "Tracking done.", Point(frame_points.cols / 2 - 100, frame_points.rows / 2), FONT_HERSHEY_PLAIN, 2, Scalar(0, 0, 255), 2);
 	imshow("Image", frame_points);
 	waitKey(0);
