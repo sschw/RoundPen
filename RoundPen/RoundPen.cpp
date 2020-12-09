@@ -107,13 +107,42 @@ int main(int argn, char** argv)
 {
 	// READING CONSOLE INPUT.
 	String path = "./RoundPen.mov";
+	String outputpath = "./";
 	String markersFile = "./markers.csv";
+	char codec[4] = { 'D', 'I', 'V', 'X'};
+	int offset = -1;
+	if (argn == 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)) {
+		cout << "Starts the Roundpen Marker Tracking" << endl
+			<< '\t' << "\"--video VIDEOFILE\" " << endl
+			<< "\t\t" << "path to the video file to track [*.mov/*.avi/*.mp4/...] (default ./RoundPen.mov)" << endl
+			<< '\t' << "\"--markers MARKERFILE\" " << endl 
+			<< "\t\t" << "path to the marker info file [*.csv] default (default: ./markers.csv)" << endl
+			<< '\t' << "\"--output OUTPUTPATH\" "<< endl 
+			<< "\t\t" << "path to the output location [*] default (default: ./)" << endl
+			<< '\t' << "\"--codec CODEC\" " << endl 
+			<< "\t\t" << "defines the video codec for the output [MJPG/DIVX/...] (default: DIVX) " << endl
+			<< '\t' << "\"--offset OFFSET\" " << endl 
+			<< "\t\t" << "defines the frames offset at the beginning [0-...] (default: -1) " << endl;
+		return 0;
+	}
 	for (int i = 2; i < argn; i += 2) {
-		if (argv[i-1] == "--video") {
+		if (strcmp(argv[i-1], "--video") == 0) {
 			path = argv[i];
 		}
-		else if (argv[i-1] == "--markers") {
+		else if (strcmp(argv[i-1], "--markers") == 0) {
 			markersFile = argv[i];
+		}
+		else if (strcmp(argv[i - 1], "--codec") == 0) {
+			codec[0] = argv[i][0];
+			codec[1] = argv[i][1];
+			codec[2] = argv[i][2];
+			codec[3] = argv[i][3];
+		}
+		else if (strcmp(argv[i - 1], "--output") == 0) {
+			outputpath = argv[i];
+		}
+		else if (strcmp(argv[i - 1], "--offset") == 0) {
+			offset = atoi(argv[i]);
 		}
 	}
 
@@ -152,6 +181,9 @@ int main(int argn, char** argv)
 	Mat frame_only_roundpen;
 	vector<vector<Point>> contours;
 	vector<vector<Point>> hull(1);
+	double ratio = 0;
+	bool init = true;
+	uint64_t frameNr = 0;
 
 	cap.open(path);
 	if (!cap.isOpened()) {
@@ -159,30 +191,39 @@ int main(int argn, char** argv)
 		cerr << "Call the command with a valid video file as first parameter" << endl;
 		return -1;
 	}
+	ratio = cap.get(CAP_PROP_FRAME_HEIGHT) / cap.get(CAP_PROP_FRAME_WIDTH);
 
 	// PLAYING VIDEO UNTIL SPACE IS PRESSED.
-	namedWindow("Image", WINDOW_NORMAL);
+	if (offset == -1) {
+		offset = 0;
+		namedWindow("Image", WINDOW_NORMAL);
+		resizeWindow("Image", 800, (int)(800 * ratio));
 
-	double ratio = 0;
-	bool init = true;
-	uint64_t frameNr = 0;
-	{
 		bool startTracking = false;
-		while (cap.read(frame) && !startTracking) {
-			if (ratio == 0) {
-				ratio = ((double)frame.rows) / frame.cols;
-				resizeWindow("Image", 800, (int)(800 * ratio));
-			}
+		while (!startTracking && cap.read(frame)) {
 			resize(frame, frame_points, Size(800, (int)(800 * ratio)));
 			imshow("Image", frame_points);
-			frameNr++;
+			offset++;
 
 			switch (waitKey(20)) {
 			case ' ': startTracking = true; break;
 			case 27: return 0;
 			}
 		}
+#ifndef INFO_IMG
+		// Destroy window if it isn't used later on.
+		destroyWindow("Image");
+		frame_points.release();
+#endif
 	}
+	else {
+#ifdef INFO_IMG
+		namedWindow("Image", WINDOW_NORMAL);
+		resizeWindow("Image", 800, (int)(800 * ratio));
+#endif
+		cap.set(CAP_PROP_POS_FRAMES, offset);
+	}
+
 	// PREPARE DIFFERENT LOG LEVELS.
 #ifdef DEBUG_IMG
 	namedWindow("Cut", WINDOW_NORMAL);
@@ -192,18 +233,15 @@ int main(int argn, char** argv)
 	resizeWindow("Input", 800, (int)(800 * ratio));
 	resizeWindow("Output", 800, (int)(800 * ratio));
 #endif
-#ifndef INFO_IMG
-	destroyWindow("Image");
-	frame_points.release();
-#endif
 #ifdef INFO_CONSOLE
-	uint64_t vidlength = (uint64_t) cap.get(CAP_PROP_FRAME_COUNT) - frameNr;
-	frameNr = 0;
+	cout << "Starting with a video offset of " << offset << endl;
+	uint64_t vidlength = (uint64_t) cap.get(CAP_PROP_FRAME_COUNT) - offset;
 #endif
 
 	// OPENING OUTPUT STREAMS.
-	VideoWriter outWriter("output_video.avi", VideoWriter::fourcc('W', 'M', 'V', '2'), 30, frame.size());
-	VideoWriter maskWriter("mask_video.avi", VideoWriter::fourcc('W', 'M', 'V', '2'), 30, frame.size());
+	Size vidSize = Size((int) cap.get(CAP_PROP_FRAME_WIDTH), (int) cap.get(CAP_PROP_FRAME_HEIGHT));
+	VideoWriter outWriter(outputpath + "output_video.avi", VideoWriter::fourcc(codec[0], codec[1], codec[2], codec[3]), 30, vidSize);
+	VideoWriter maskWriter(outputpath + "mask_video.avi", VideoWriter::fourcc(codec[0], codec[1], codec[2], codec[3]), 30, vidSize);
 	ofstream marWriter;
 	marWriter.open("output_markers.csv");
 
@@ -307,15 +345,20 @@ int main(int argn, char** argv)
 			}
 			marWriter << endl;
 		}
-
-		frameNr++;
 #ifdef INFO_CONSOLE
 		cout << frameNr << "/" << vidlength << '\r';
 #endif
+
+		frameNr++;
 #ifdef STOPABLE
 		if(waitKey(1) == 27) break;
 #endif
 	}
+#ifdef INFO_CONSOLE
+	// Opencv can be inaccurate about the max number of frames.
+	// This will show the correct result and places the cursor correctly.
+	cout << vidlength << "/" << vidlength << endl;
+#endif
 	outWriter.release();
 	maskWriter.release();
 	marWriter.close();

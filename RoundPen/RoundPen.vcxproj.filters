@@ -29,6 +29,7 @@
     <None Include="opencv_world440d.dll" />
     <None Include="opencv_videoio_ffmpeg440_64.dll" />
     <None Include="markers.csv" />
+    <None Include="opencv_world440.dll" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Marker.h">
