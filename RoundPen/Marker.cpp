@@ -159,11 +159,14 @@ namespace rp {
 	void Marker::set_current_position(uint8_t currentFrame, cv::Point2d* pos) {
 		if (pos != nullptr || pos->x < 0 || pos->y < 0) {
 			uint8_t frameDiff = currentFrame - mLastFrame;
-			mTracked = true;
 			if (mLastPosition.x != 0 && mLastPosition.y != 0) {
 				cv::Point2d newVelocity = (*pos - mLastPosition) / frameDiff;
-				newVelocity.x = std::min(newVelocity.x, 15.0); // Max x velocity -> px per frame
-				newVelocity.y = std::min(newVelocity.y, 15.0); // Max x velocity -> px per frame
+				// Probably invalid point as it is jumping pretty far from the original spot.
+				if (newVelocity.x * frameDiff > 20 || newVelocity.y * frameDiff > 20) {
+					return;
+				}
+				newVelocity.x = std::min(newVelocity.x, 5.0); // Max x velocity -> px per frame
+				newVelocity.y = std::min(newVelocity.y, 5.0); // Max x velocity -> px per frame
 				// If we have a previous velocity, we calc the acceleration. 
 				// First acceleration after tracking is too high.
 				if (mLastVelocity.x != 0 || mLastVelocity.y != 0) {
@@ -176,6 +179,7 @@ namespace rp {
 			}
 			mLastPosition = *pos;
 			mLastFrame = currentFrame;
+			mTracked = true;
 		}
 	}
 
@@ -236,7 +240,7 @@ namespace rp {
 			}
 		}
 		else if (cont.size() >= 1) {
-			int area;
+			double area;
 			double contourX, contourY;
 			double contourError;
 			double error = INFINITY;
@@ -252,8 +256,9 @@ namespace rp {
 					else {
 						mu = moments(cont[i]);
 						if (mu.m10 < 0 || mu.m01 < 0 || mu.m00 <= 0) {
-							contourX = cont[i][0].x;
-							contourY = cont[i][0].y;
+							auto bb = cv::boundingRect(cont[i]);
+							contourX = bb.x + (((double) bb.width) / 2);
+							contourY = bb.y + (((double) bb.height) / 2);
 						}
 						else {
 							contourX = std::max(0.0, std::min(mu.m10 / mu.m00, (double)frame.cols));
@@ -283,8 +288,8 @@ namespace rp {
 			//if (prevCenter != nullptr) {
 			//    drawMarker(frame_points, (*prevCenter) / (((double)frame.cols) / 800), cv::Scalar(0, 0, 128), cv::MARKER_TILTED_CROSS, 5, 2);
 			//}
-			return returnVal;
 		}
+		return returnVal;
 	}
 	
 	cv::Scalar ScalarHSV2BGR(uchar H, uchar S, uchar V) {
