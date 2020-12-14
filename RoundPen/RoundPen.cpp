@@ -15,12 +15,12 @@ using namespace cv;
 #ifdef _DEBUG
 #define STOPABLE // CAN TRACKING BE STOPPED? Will result in an additional key check.
 #define INFO_IMG // Show markers while tracking
+//#define DEBUG_IMG // Show intermediate results
+//#define DEBUG_CONSOLE // Show info on console
 #elif NDEBUG
 #define INFO_CONSOLE // Show progress.
 #endif
 
-//#define DEBUG_IMG // Show intermediate results
-//#define DEBUG_CONSOLE // Show info on console
 
 void cut_roundPen(Mat& input_hsv, Mat& output_hsv, Mat& mask, Mat& downscaled, vector<vector<Point>>& contours, vector<vector<Point>>& hull, bool show_imgs = false) {
 	int contourID = -1;
@@ -49,6 +49,8 @@ void cut_roundPen(Mat& input_hsv, Mat& output_hsv, Mat& mask, Mat& downscaled, v
 	mask = Mat::zeros(input_hsv.size(), CV_8U);
 	if (contourID >= 0) {
 #ifdef DEBUG_IMG
+		namedWindow("Roundpen contour", cv::WINDOW_NORMAL);
+		resizeWindow("Roundpen contour", 600, (int)(600 * downscaled.rows / downscaled.cols));
 		drawContours(downscaled, contours, -1, Scalar(128), -1);
 		drawContours(downscaled, contours, contourID, Scalar(255), -1);
 		imshow("Roundpen contour", downscaled);
@@ -58,6 +60,8 @@ void cut_roundPen(Mat& input_hsv, Mat& output_hsv, Mat& mask, Mat& downscaled, v
 		//drawContours(mask, hull, 0, Scalar(255), -1);
 		fillConvexPoly(mask, Mat(hull[0]) * (((double)input_hsv.cols) / 100), Scalar(255));
 #ifdef DEBUG_IMG
+		cv::namedWindow("Roundpen mask", cv::WINDOW_NORMAL);
+		cv::resizeWindow("Roundpen mask", 600, (int)(600 * mask.rows / mask.cols));
 		imshow("Roundpen mask", mask);
 #endif
 	}
@@ -71,19 +75,22 @@ int make_mask(Mat& img, Mat& mask, vector<rp::Marker>& markers, int frameNr) {
 	for (auto& marker : markers) {
 		if (marker.is_trackable(frameNr)) {
 			if (marker.is_tracked_for_frame(frameNr)) {
-				circle(mask, marker.get_last_position(), 13, Scalar(255, 255, 255), FILLED);
+				circle(mask, marker.get_last_position(), (int)(marker.get_marker_radius() + 8), Scalar(255, 255, 255), FILLED);
 			}
 			else {
 				auto pos = marker.get_next_position(frameNr);
-				auto diff = pos - marker.get_last_position();
-				circle(mask, pos, max(13, (int)sqrt(pow(diff.x, 2) + pow(diff.y, 2))), Scalar(255, 255, 255), FILLED);
+				// Only draw if predicted pos is in frame
+				if (pos.x < img.cols && pos.y < img.rows && pos.x >= 0 && pos.y >= 0) {
+					//auto diff = pos - marker.get_last_position();
+					circle(mask, pos, (int)(marker.get_marker_radius() + 8/* + (int)std::max(diff.x, diff.y)*/), Scalar(255, 255, 255), FILLED);
+				}
 			}
 		}
 	}
 	return 0;
 }
 
-int marker_removing(Mat& img, Mat& out, vector<rp::Marker>& markers, int frameNr) {
+/*int marker_removing(Mat& img, Mat& out, vector<rp::Marker>& markers, int frameNr) {
 	Mat mask = Mat::zeros(img.rows, img.cols, CV_8U);
 
 	for (auto& marker : markers) {
@@ -101,7 +108,7 @@ int marker_removing(Mat& img, Mat& out, vector<rp::Marker>& markers, int frameNr
 
 	inpaint(img, mask, out, 12, INPAINT_TELEA);
 	return 0;
-}
+}*/
 
 int main(int argn, char** argv)
 {
@@ -113,16 +120,16 @@ int main(int argn, char** argv)
 	int offset = -1;
 	if (argn == 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)) {
 		cout << "Starts the Roundpen Marker Tracking" << endl
-			<< '\t' << "\"--video VIDEOFILE\" " << endl
+			<< '\t' << "--video VIDEOFILE" << endl
 			<< "\t\t" << "path to the video file to track [*.mov/*.avi/*.mp4/...] (default ./RoundPen.mov)" << endl
-			<< '\t' << "\"--markers MARKERFILE\" " << endl 
+			<< '\t' << "--markers MARKERFILE" << endl 
 			<< "\t\t" << "path to the marker info file [*.csv] default (default: ./markers.csv)" << endl
-			<< '\t' << "\"--output OUTPUTPATH\" "<< endl 
+			<< '\t' << "--output OUTPUTPATH"<< endl 
 			<< "\t\t" << "path to the output location [*] default (default: ./)" << endl
-			<< '\t' << "\"--codec CODEC\" " << endl 
-			<< "\t\t" << "defines the video codec for the output [MJPG/DIVX/...] (default: DIVX) " << endl
-			<< '\t' << "\"--offset OFFSET\" " << endl 
-			<< "\t\t" << "defines the frames offset at the beginning [0-...] (default: -1) " << endl;
+			<< '\t' << "--codec CODEC" << endl 
+			<< "\t\t" << "defines the video codec for the output [MJPG/DIVX/...] (default: DIVX)" << endl
+			<< '\t' << "--offset OFFSET" << endl 
+			<< "\t\t" << "defines the frames offset at the beginning [0-...] (default: -1)" << endl;
 		return 0;
 	}
 	for (int i = 2; i < argn; i += 2) {
@@ -253,11 +260,15 @@ int main(int argn, char** argv)
 
 
 	// START TRACKING MARKERS.
+#ifndef DEBUG_IMG
 #pragma omp parallel
 #pragma omp master
+#endif
 	while (cap.read(frame)) {
-#ifdef INFO_IMG
+#if defined(INFO_IMG) || defined(DEBUG_IMG)
 		resize(frame, frame_points, Size(800, (int)(800 * ratio)));
+#endif
+#ifdef DEBUG_IMG
 		imshow("Input", frame_points);
 #endif
 
@@ -266,20 +277,27 @@ int main(int argn, char** argv)
 		resize(frame_hsv, downscaled, Size(100, (int)(100 * ratio)));
 
 		cut_roundPen(frame_hsv, frame_only_roundpen, mask, downscaled, contours, hull);
+#ifdef DEBUG_IMG
+		imshow("Cut", frame_only_roundpen);
+#endif
 
 		resize(frame_only_roundpen, downscaled, Size(100, (int)(100 * ratio)));
 		
 		if (init) {
 			// Calibrate optimal marker color filter ranges.
 			// This will take much time.
+#ifndef DEBUG_IMG
 #pragma omp parallel for
+#endif
 			for (int i = 0; i < markers.size(); i++) {
 				markers[i].calibrate_marker_range(frame_only_roundpen, (uint8_t) frameNr);
 			}
 			init = false;
 		}
 		else {
+#ifndef DEBUG_IMG
 #pragma omp parallel for
+#endif
 			for (int i = 0; i < markers.size(); i++) {
 				Point2d pos;
 				int validity = markers[i].find_position(frame_only_roundpen, (uint8_t) frameNr, &pos);
@@ -327,6 +345,9 @@ int main(int argn, char** argv)
 			*/
 			mask = Mat::zeros(frame.size(), CV_8UC3);
 			make_mask(frame, mask, markers, (uint8_t)frameNr);
+#ifdef DEBUG_IMG
+			imshow("Output", mask);
+#endif
 
 			outWriter.write(frame);
 			maskWriter.write(mask);
