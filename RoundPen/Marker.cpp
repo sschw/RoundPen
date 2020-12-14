@@ -87,7 +87,7 @@ namespace rp {
 		std::vector<cv::Mat> contourAreas;
 		std::vector<cv::Point> contourOffsets;
 
-		if (contours.size() < 200) {
+		if (contours.size() < 50) {
 			optimize_search_area_space(tmp, cv::Point(0, 0), contours, contourAreas, contourOffsets);
 		}
 		else {
@@ -111,7 +111,7 @@ namespace rp {
 				cv::drawContours(out, contoursInsideContour, -1, cv::Scalar(0, 0, 255), 1, 8, cv::noArray(), 2147483647, cv::Point(contourOffsets[j]));
 				cv::imshow("Color Search Area", out);
 #endif
-				if (contoursInsideContour.size() < 200) {
+				if (contoursInsideContour.size() < 50 && contourAreas.size() < 50) {
 					optimize_search_area_space(contourAreas[j], contourOffsets[j], contoursInsideContour, contourAreas, contourOffsets);
 					contourAreas.erase(contourAreas.begin() + j);
 					contourOffsets.erase(contourOffsets.begin() + j);
@@ -137,7 +137,7 @@ namespace rp {
 					cv::drawContours(out, contoursInsideContour, -1, cv::Scalar(0, 0, 255), 1, 8, cv::noArray(), 2147483647, cv::Point(contourOffsets[j]));
 					cv::imshow("Color Search Area", out);
 #endif
-					if (contoursInsideContour.size() < 200) {
+					if (contoursInsideContour.size() < 50 && contourAreas.size() < 50) {
 						optimize_search_area_space(contourAreas[j], contourOffsets[j], contoursInsideContour, contourAreas, contourOffsets);
 						contourAreas.erase(contourAreas.begin() + j);
 						contourOffsets.erase(contourOffsets.begin() + j);
@@ -163,7 +163,7 @@ namespace rp {
 						cv::drawContours(out, contoursInsideContour, -1, cv::Scalar(0, 0, 255), 1, 8, cv::noArray(), 2147483647, cv::Point(contourOffsets[j]));
 						cv::imshow("Color Search Area", out);
 #endif
-						if (contoursInsideContour.size() < 200) {
+						if (contoursInsideContour.size() < 50 && contourAreas.size() < 50) {
 							optimize_search_area_space(contourAreas[j], contourOffsets[j], contoursInsideContour, contourAreas, contourOffsets);
 							contourAreas.erase(contourAreas.begin() + j);
 							contourOffsets.erase(contourOffsets.begin() + j);
