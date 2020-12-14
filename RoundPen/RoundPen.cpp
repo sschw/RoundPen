@@ -15,7 +15,7 @@ using namespace cv;
 #ifdef _DEBUG
 #define STOPABLE // CAN TRACKING BE STOPPED? Will result in an additional key check.
 #define INFO_IMG // Show markers while tracking
-//#define DEBUG_IMG // Show intermediate results
+#define DEBUG_IMG // Show intermediate results
 //#define DEBUG_CONSOLE // Show info on console
 #elif NDEBUG
 #define INFO_CONSOLE // Show progress.
@@ -35,7 +35,7 @@ void cut_roundPen(Mat& input_hsv, Mat& output_hsv, Mat& mask, Mat& downscaled, v
 	{
 		area = contourArea(contours[i]);
 		// TODO FIXED AREA SIZE FOR ROUNDPEN.
-		if (area > 1000) {
+		if (area > 500) {
 			arclength = arcLength(contours[i], true);
 			circularity = 4 * CV_PI * area / (arclength * arclength);
 			if (circularity > prevCircularity) {
@@ -117,7 +117,7 @@ int main(int argn, char** argv)
 	String outputpath = "./";
 	String markersFile = "./markers.csv";
 	char codec[4] = { 'D', 'I', 'V', 'X'};
-	int offset = -1;
+	int offset = -1, finish = -1;
 	if (argn == 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)) {
 		cout << "Starts the Roundpen Marker Tracking" << endl
 			<< '\t' << "--video VIDEOFILE" << endl
@@ -128,8 +128,10 @@ int main(int argn, char** argv)
 			<< "\t\t" << "path to the output location [*] default (default: ./)" << endl
 			<< '\t' << "--codec CODEC" << endl 
 			<< "\t\t" << "defines the video codec for the output [MJPG/DIVX/...] (default: DIVX)" << endl
-			<< '\t' << "--offset OFFSET" << endl 
-			<< "\t\t" << "defines the frames offset at the beginning [0-...] (default: -1)" << endl;
+			<< '\t' << "--offset OFFSET" << endl
+			<< "\t\t" << "defines the frames offset at the beginning [0-...] (default: -1)" << endl
+			<< '\t' << "--finish FINISHFRAME" << endl
+			<< "\t\t" << "defines at which frame it should end [0-...] (default: -1)" << endl;
 		return 0;
 	}
 	for (int i = 2; i < argn; i += 2) {
@@ -150,6 +152,9 @@ int main(int argn, char** argv)
 		}
 		else if (strcmp(argv[i - 1], "--offset") == 0) {
 			offset = atoi(argv[i]);
+		}
+		else if (strcmp(argv[i - 1], "--finish") == 0) {
+			finish = atoi(argv[i]);
 		}
 	}
 
@@ -242,7 +247,12 @@ int main(int argn, char** argv)
 #endif
 #ifdef INFO_CONSOLE
 	cout << "Starting with a video offset of " << offset << endl;
-	uint64_t vidlength = (uint64_t) cap.get(CAP_PROP_FRAME_COUNT) - offset;
+	uint64_t vidlength = (uint64_t)cap.get(CAP_PROP_FRAME_COUNT) - offset;
+	if (finish != -1) {
+		vidlength = finish - offset;
+		cout << "Video ending at " << finish << endl;
+		finish -= offset;
+	}
 #endif
 
 	// OPENING OUTPUT STREAMS.
@@ -264,7 +274,7 @@ int main(int argn, char** argv)
 #pragma omp parallel
 #pragma omp master
 #endif
-	while (cap.read(frame)) {
+	while (frameNr != finish && cap.read(frame)) {
 #if defined(INFO_IMG) || defined(DEBUG_IMG)
 		resize(frame, frame_points, Size(800, (int)(800 * ratio)));
 #endif
