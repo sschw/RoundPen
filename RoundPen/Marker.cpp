@@ -4,7 +4,7 @@
 #include "Marker.h"
 
 #ifdef _DEBUG
-//#define DEBUG_IMG // Show intermediate results
+#define DEBUG_IMG // Show intermediate results
 //#define DEBUG_CONSOLE // Show info on console
 #elif NDEBUG
 #define INFO_CONSOLE // Show progress.
@@ -175,7 +175,7 @@ namespace rp {
 			}
 		}
 
-		if (contourAreas.size() == 1) {
+		if (contourAreas.size() == 1 && contourOffsets.size() > 0) {
 			set_current_position(frameNr, &cv::Point2d(contourOffsets[0].x + contourAreas[0].cols / 2, contourOffsets[0].y + contourAreas[0].rows / 2));
 			mMarkerRadius = (double) std::max(1, std::max(contourAreas[0].cols / 2, contourAreas[0].rows / 2));
 		}
@@ -208,46 +208,55 @@ namespace rp {
 	}
 
 	cv::Point2d Marker::get_last_position() {
-		return mLastPosition;
+		return mLastPositions[0];
 	}
 
 	bool Marker::is_trackable(int currentFrame) {
-		mTracked = mTracked && ((currentFrame - mLastFrame) < mFramesUntilLost);
+		mTracked = mTracked && ((currentFrame - mLastFrames[0]) < mFramesUntilLost);
 		if (!mTracked) {
 			mLastAcceleration = cv::Point2d(0, 0);
 			mLastVelocity = cv::Point2d(0, 0);
+			mLastPositionsNum = 0;
 		}
 		return mTracked;
 	}
 
 	cv::Point2d Marker::get_next_position(uint8_t currentFrame) {
-		uint8_t frameDiff = currentFrame - mLastFrame;
-		return mLastPosition + (mLastVelocity * frameDiff);// +(mLastAcceleration * frameDiff * frameDiff / 2);
+		uint8_t frameDiff = currentFrame - mLastFrames[0];
+		return mLastPositions[0] + (mLastVelocity * frameDiff);// +(mLastAcceleration * frameDiff * frameDiff / 2);
 	}
 
 	void Marker::set_current_position(uint8_t currentFrame, cv::Point2d* pos) {
-		if (pos != nullptr || pos->x < 0 || pos->y < 0) {
-			uint8_t frameDiff = currentFrame - mLastFrame;
-			if (mLastPosition.x != 0 && mLastPosition.y != 0) {
-				cv::Point2d newVelocity = (*pos - mLastPosition) / frameDiff;
-				// Probably invalid point as it is jumping pretty far from the original spot.
-				if (newVelocity.x * frameDiff > 20 || newVelocity.y * frameDiff > 20) {
-					return;
+		if (pos != nullptr && pos->x >= 0 && pos->y >= 0) {
+			if (mLastPositionsNum > 0) {
+				uint8_t frameDiff = currentFrame - mLastFrames[mLastPositionsNum - 1];
+				if (mLastPositions[mLastPositionsNum - 1].x != 0 && mLastPositions[mLastPositionsNum - 1].y != 0) {
+					cv::Point2d newVelocity = (*pos - mLastPositions[mLastPositionsNum-1]) / frameDiff;
+					// Probably invalid point as it is jumping pretty far from the original spot.
+					if (newVelocity.x * frameDiff > 20 || newVelocity.y * frameDiff > 20) {
+						return;
+					}
+					newVelocity.x = std::min(newVelocity.x, 5.0); // Max x velocity -> px per frame
+					newVelocity.y = std::min(newVelocity.y, 5.0); // Max y velocity -> px per frame
+					// If we have a previous velocity, we calc the acceleration. 
+					// First acceleration after tracking is too high.
+					if (mLastVelocity.x != 0 || mLastVelocity.y != 0) {
+						mLastAcceleration = 2 * (newVelocity - mLastVelocity) / frameDiff;
+					}
+					else {
+						mLastAcceleration = cv::Point2d(0, 0);
+					}
+					mLastVelocity = newVelocity;
 				}
-				newVelocity.x = std::min(newVelocity.x, 5.0); // Max x velocity -> px per frame
-				newVelocity.y = std::min(newVelocity.y, 5.0); // Max x velocity -> px per frame
-				// If we have a previous velocity, we calc the acceleration. 
-				// First acceleration after tracking is too high.
-				if (mLastVelocity.x != 0 || mLastVelocity.y != 0) {
-					mLastAcceleration = 2 * (newVelocity - mLastVelocity) / frameDiff;
-				}
-				else {
-					mLastAcceleration = cv::Point2d(0, 0);
-				}
-				mLastVelocity = newVelocity;
 			}
-			mLastPosition = *pos;
-			mLastFrame = currentFrame;
+			for (int i = 1; i < mLastPositionsNum + 1; i++) {
+				mLastPositions[i] = mLastPositions[i - 1];
+				mLastFrames[i] = mLastFrames[i - 1];
+			}
+			if (mLastPositionsNum < 5)
+				mLastPositionsNum++;
+			mLastPositions[0] = *pos;
+			mLastFrames[0] = currentFrame;
 			mTracked = true;
 		}
 	}
@@ -265,8 +274,8 @@ namespace rp {
 		cv::Point2d predicted_center;
 		if (is_trackable(currentFrame)) {
 			predicted_center = get_next_position(currentFrame);
-			int halfW = (int)std::min(200.0, std::max(40.0, abs(predicted_center.x - mLastPosition.x)));
-			int halfH = (int)std::min(200.0, std::max(40.0, abs(predicted_center.y - mLastPosition.y)));
+			int halfW = (int)std::min(300.0, std::max(120.0, abs(predicted_center.x - get_last_position().x)));
+			int halfH = (int)std::min(300.0, std::max(120.0, abs(predicted_center.y - get_last_position().y)));
 			lx = (int)(std::max(0.0, std::min(predicted_center.x, (double)frame.cols) - halfW));
 			ly = (int)(std::max(0.0, std::min(predicted_center.y, (double)frame.rows) - halfH));
 			int hx = (int)(std::min((double)frame.cols-1, std::max(0.0, predicted_center.x) + halfW));
@@ -275,6 +284,19 @@ namespace rp {
 			marker_area = frame(cv::Rect(lx, ly, hx-lx, hy-ly));
 
 			inRange(marker_area, get_marker_color_range_low(), get_marker_color_range_high(), marker_area_thresh);
+
+			/*cv::Scalar cUpdate = cv::mean(marker_area, marker_area_thresh);
+			cv::Vec3b cUpdateColor = cv::Vec3b(FIX_ADD_H_RANGE(cUpdate[0]+3), FIX_ADD_SV_RANGE(cUpdate[1],3), FIX_ADD_SV_RANGE(cUpdate[2],3));
+			cv::Vec3b tmp;
+			cv::Vec3b cUpdateLow;
+			cv::Vec3b cUpdateHigh;
+			cv::subtract(mHsvColor, mCLow, tmp);
+			cv::subtract(cUpdateColor, tmp, cUpdateLow);
+			cv::subtract(mCHigh, mHsvColor, tmp);
+			cv::add(cUpdateColor, tmp, cUpdateHigh);
+			//mHsvColor = cUpdateColor;
+			mCLow = cUpdateLow;
+			mCHigh = cUpdateHigh;*/
 
 			cv::Mat structuringElement = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(20, 20));
 			cv::morphologyEx(marker_area_thresh, marker_area_thresh, cv::MORPH_CLOSE, structuringElement);

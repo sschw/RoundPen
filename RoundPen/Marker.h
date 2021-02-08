@@ -19,7 +19,7 @@ namespace rp {
 
 	class Marker {
 	public:
-		Marker(cv::String name, cv::Vec3b hsvColor, bool alwaysVisible = false, uint8_t framesUntilLost = 5): mName(name), mHsvColor(hsvColor), mAlwaysVisible(alwaysVisible), mFramesUntilLost(framesUntilLost), mLastFrame(255), mMarkerRadius(1), mTracked(false) {
+		Marker(cv::String name, cv::Vec3b hsvColor, bool alwaysVisible = false, uint8_t framesUntilLost = 5): mName(name), mHsvColor(hsvColor), mAlwaysVisible(alwaysVisible), mFramesUntilLost(framesUntilLost), mMarkerRadius(1), mTracked(false) {
 			// Define minimal and maximal range.
 			mCLow = cv::Vec3b(FIX_SUBR_H_RANGE(mHsvColor[0] - 10), FIX_SUBR_SV_RANGE(mHsvColor[1], 40), FIX_SUBR_SV_RANGE(mHsvColor[2], 40));
 			mCHigh = cv::Vec3b(FIX_ADD_H_RANGE(mHsvColor[0] + 10), FIX_ADD_SV_RANGE(mHsvColor[1], 40), FIX_ADD_SV_RANGE(mHsvColor[2], 40));
@@ -32,7 +32,7 @@ namespace rp {
 		cv::Vec3b get_marker_color_range_high();
 		cv::Point2d get_last_position();
 		bool is_trackable(int currentFrame);
-		bool is_tracked_for_frame(uint8_t currentFrame) { return currentFrame - mLastFrame == 0; }
+		bool is_tracked_for_frame(uint8_t currentFrame) { return currentFrame - mLastFrames[0] == 0; }
 		cv::Point2d get_next_position(uint8_t currentFrame);
 		void set_current_position(uint8_t currentFrame, cv::Point2d* pos);
 		cv::String get_name() { return mName; }
@@ -49,12 +49,13 @@ namespace rp {
 		bool mAlwaysVisible;
 		std::vector<MarkerEdge*> mNeighbors;
 
-		cv::Point2d mLastPosition;
+		cv::Point2d mLastPositions[5];
+		uint8_t mLastFrames[5];
+		int mLastPositionsNum = 0;
 		cv::Point2d mLastVelocity;
 		cv::Point2d mLastAcceleration;
 
 		uint8_t mFramesUntilLost;
-		uint8_t mLastFrame;
 
 		bool mTracked;
 	};

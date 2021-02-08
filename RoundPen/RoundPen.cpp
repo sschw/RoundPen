@@ -27,7 +27,7 @@ void cut_roundPen(Mat& input_hsv, Mat& output_hsv, Mat& mask, Mat& downscaled, v
 	double area, arclength, circularity;
 	double prevCircularity = 0;
 
-	inRange(downscaled, Scalar(0, 0, 0), Scalar(180, 10, 255), downscaled);
+	inRange(downscaled, Scalar(0, 0, 0), Scalar(180, 14, 255), downscaled);
 	findContours(downscaled, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0, 0));
 
 
@@ -164,7 +164,6 @@ int main(int argn, char** argv)
 	if (!reader.is_open()) return 1;
 	cv::Vec3b background;
 	vector<rp::Marker> markers;
-
 	{
 		char nameBuffer[40];
 		char h[4], s[4], v[4];
