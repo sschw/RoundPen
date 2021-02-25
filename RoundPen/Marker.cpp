@@ -349,6 +349,15 @@ namespace rp {
 #endif
 
 		if (cont.size() == 0) {
+			int found = 1;
+			if (mCHigh[1] - mCLow[1] < (START_S_RANGE_LOW + START_S_RANGE_HIGH)) {
+				mCLow[1] = FIX_SUBR_SV_RANGE(mCLow[1], 2);
+				mCHigh[1] = FIX_ADD_SV_RANGE(mCHigh[1], 5);
+				found = find_position(frame, currentFrame, position);
+				mCLow[1] = FIX_SUBR_SV_RANGE(mCHigh[1], -5);
+				mCHigh[1] = FIX_ADD_SV_RANGE(mCLow[1], 2);
+				if (found == 0) return found;
+			}
 			// Increase the color range so we hopefully will be able to track it again.
 			if (mCHigh[0] - mCLow[0] < (START_H_RANGE_LOW + START_H_RANGE_HIGH)) {
 				mCLow[0] = FIX_SUBR_H_RANGE(mCLow[0] - 1);
@@ -403,6 +412,9 @@ namespace rp {
 					}
 					else {
 						cv::drawContours(labels, cont, i, cv::Scalar(i), cv::FILLED);
+#ifdef DEBUG_IMG
+						cv::drawContours(marker_area, cont, -1, cv::Scalar(i), cv::FILLED);
+#endif
 						cv::Rect roi = cv::boundingRect(cont[i]);
 						cv::Scalar mean = cv::mean(marker_area(roi), labels(roi) == i);
 						
@@ -423,6 +435,7 @@ namespace rp {
 		}
 #ifdef DEBUG_IMG
 		cv::imshow("Marker Threshold Area", marker_area_thresh);
+		cv::imshow("Marker Area", marker_area);
 		cv::waitKey(0);
 		/*cv::destroyWindow("Marker Search Area");
 		cv::destroyWindow("Marker Threshold Area");
